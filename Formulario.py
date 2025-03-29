@@ -73,7 +73,7 @@ if "muestra" not in st.session_state:
     st.session_state.muestra = textos_df.sample(n=2, random_state=random.randint(0, 10000)).reset_index(drop=True)
     st.session_state.session_id = str(uuid.uuid4())
     st.session_state.submitted = False
-    st.session_state.respuestas = [None, None, None]
+    st.session_state.respuestas = [None, None]
 
 # --- Mostrar formulario solo si no se ha enviado ---
 if not st.session_state.submitted:
