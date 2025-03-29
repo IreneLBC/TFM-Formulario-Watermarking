@@ -11,13 +11,25 @@ import json
 st.set_page_config(page_title="Clasificación de textos", layout="wide")
 st.title("📝 Clasifica los textos: ¿Humano o IA con marca de agua?")
 
+# def conectar_google_sheets():
+#     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+#     creds_dict = json.loads(st.secrets["GOOGLE_SHEETS_CREDENTIALS"])
+#     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+#     client = gspread.authorize(creds)
+#     sheet = client.open("Respuestas_Formulario_TFM").sheet1
+#     return sheet
+
 def conectar_google_sheets():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_dict = json.loads(st.secrets["GOOGLE_SHEETS_CREDENTIALS"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
-    sheet = client.open("Respuestas_Formulario_TFM").sheet1
+
+    # Conexión directa usando el ID del documento
+    sheet_id = "1Kj3IvIoScc2Bkcs_fxQ8p7gbtFqWr3QCbGO9FvJnWNo"
+    sheet = client.open_by_key(sheet_id).sheet1
     return sheet
+
 
 def guardar_respuesta_en_sheets(respuestas):
     sheet = conectar_google_sheets()
