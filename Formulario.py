@@ -4,9 +4,35 @@ import random
 import uuid
 from datetime import datetime
 import os
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import json
 
 st.set_page_config(page_title="Clasificación de textos", layout="wide")
 st.title("📝 Clasifica los textos: ¿Humano o IA con marca de agua?")
+
+def conectar_google_sheets():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds_dict = json.loads(st.secrets["GOOGLE_SHEETS_CREDENTIALS"])
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(creds)
+    sheet = client.open("Respuestas_Formulario_TFM").sheet1
+    return sheet
+
+def guardar_respuesta_en_sheets(respuestas):
+    sheet = conectar_google_sheets()
+    for r in respuestas:
+        fila = [
+            r["session_id"],
+            r["timestamp"],
+            r["texto_id"],
+            r["texto"],
+            r["clasificacion_usuario"],
+            r["clasificacion_real"],
+            ""
+        ]
+        sheet.append_row(fila)
+
 
 # --- Carga de textos con separador personalizado ---
 @st.cache_data
@@ -57,13 +83,7 @@ if not st.session_state.submitted:
     # Botón para enviar
     if st.button("Enviar respuestas"):
         if all(resp and resp["clasificacion_usuario"] for resp in st.session_state.respuestas):
-            respuestas_df = pd.DataFrame(st.session_state.respuestas)
-            archivo = "respuestas.csv"
-            if os.path.exists(archivo):
-                respuestas_df.to_csv(archivo, mode='a', header=False, index=False)
-            else:
-                respuestas_df.to_csv(archivo, index=False)
-
+            guardar_respuesta_en_sheets(st.session_state.respuestas)
             st.session_state.submitted = True
             st.success("✅ ¡Gracias! Tus respuestas han sido registradas.")
         else:
