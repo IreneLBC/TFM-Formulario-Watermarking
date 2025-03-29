@@ -2,71 +2,74 @@ import streamlit as st
 import pandas as pd
 import random
 import uuid
-import os
 from datetime import datetime
+import os
 
-# --- CONFIGURACIÓN INICIAL ---
 st.set_page_config(page_title="Clasificación de textos", layout="wide")
 st.title("📝 Clasifica los textos: ¿Humano o IA con marca de agua?")
 
-# --- CARGA Y LIMPIEZA DE TEXTOS ---
+# --- Carga de textos con separador personalizado ---
 @st.cache_data
 def load_texts():
-    df = pd.read_csv("Textos.csv", sep="|", quotechar='"', engine="python", encoding="utf-8")
+    df = pd.read_csv("Textos.csv", sep="|", encoding="utf-8")
     df = df.dropna(subset=["text"])
     df = df[df["text"].str.strip().str.len() > 0]
     return df
 
 textos_df = load_texts()
 
-# --- COMPROBACIÓN DE DISPONIBILIDAD ---
+# --- Verificación de que haya suficientes textos disponibles ---
 if len(textos_df) < 3:
-    st.error("No hay suficientes textos válidos para mostrar. Revisa el archivo Textos.csv.")
+    st.error("No hay suficientes textos válidos para mostrar. Revisa el archivo.")
     st.stop()
 
-# --- SELECCIÓN DE MUESTRA ALEATORIA ---
-muestra = textos_df.sample(n=3, random_state=random.randint(0, 10000)).reset_index(drop=True)
+# --- Inicializar estado de sesión ---
+if "muestra" not in st.session_state:
+    st.session_state.muestra = textos_df.sample(n=3, random_state=random.randint(0, 10000)).reset_index(drop=True)
+    st.session_state.session_id = str(uuid.uuid4())
+    st.session_state.submitted = False
+    st.session_state.respuestas = [None, None, None]
 
-# Identificador único de usuario/sesión
-session_id = str(uuid.uuid4())
+# --- Mostrar formulario solo si no se ha enviado ---
+if not st.session_state.submitted:
+    st.write("Lee los siguientes textos y clasifícalos según tu criterio:")
 
-# --- FORMULARIO DE CLASIFICACIÓN ---
-respuestas = []
+    for idx, row in st.session_state.muestra.iterrows():
+        st.markdown(f"### Texto {idx + 1}")
+        st.text_area("Contenido:", value=row["text"], height=200, key=f"texto_{idx}", disabled=True)
 
-st.write("Lee los siguientes textos y clasifícalos según tu criterio:")
+        respuesta = st.radio(
+            "¿Quién crees que ha escrito este texto?",
+            options=["Escrito por humano", "Escrito por IA", "Escrito por IA con marca de agua"],
+            key=f"respuesta_{idx}",
+            index=None
+        )
 
-for idx, row in muestra.iterrows():
-    st.markdown(f"### Texto {idx + 1}")
-    st.text_area("Contenido:", value=row["text"], height=200, key=f"texto_{idx}", disabled=True)
+        st.session_state.respuestas[idx] = {
+            "session_id": st.session_state.session_id,
+            "timestamp": datetime.now().isoformat(),
+            "texto_id": row["id"],
+            "texto": row["text"],
+            "clasificacion_usuario": respuesta,
+            "clasificacion_real": row["label"]
+        }
 
-    respuesta = st.radio(
-        "¿Quién crees que ha escrito este texto?",
-        options=["Escrito por humano", "Escrito por IA", "Escrito por IA con marca de agua"],
-        key=f"respuesta_{idx}",
-        index=None
-    )
+    # Botón para enviar
+    if st.button("Enviar respuestas"):
+        if all(resp and resp["clasificacion_usuario"] for resp in st.session_state.respuestas):
+            respuestas_df = pd.DataFrame(st.session_state.respuestas)
+            archivo = "respuestas.csv"
+            if os.path.exists(archivo):
+                respuestas_df.to_csv(archivo, mode='a', header=False, index=False)
+            else:
+                respuestas_df.to_csv(archivo, index=False)
 
-    respuestas.append({
-        "session_id": session_id,
-        "timestamp": datetime.now().isoformat(),
-        "texto_id": row["id"],
-        "texto": row["text"],
-        "clasificacion_usuario": respuesta,
-        "clasificacion_real": row["label"]
-    })
-
-# --- BOTÓN PARA GUARDAR RESPUESTAS ---
-if st.button("Enviar respuestas"):
-    if all(r["clasificacion_usuario"] for r in respuestas):
-        respuestas_df = pd.DataFrame(respuestas)
-        
-        # Si el fichero ya existe, añadir; si no, crear nuevo
-        resultado_path = "respuestas.csv"
-        if os.path.exists(resultado_path):
-            respuestas_df.to_csv(resultado_path, mode='a', index=False, header=False)
+            st.session_state.submitted = True
+            st.success("✅ ¡Gracias! Tus respuestas han sido registradas.")
         else:
-            respuestas_df.to_csv(resultado_path, index=False)
+            st.warning("❗Por favor, responde a los tres textos antes de enviar.")
 
-        st.success("✅ ¡Gracias! Tus respuestas han sido registradas.")
-    else:
-        st.warning("❗Por favor, clasifica los tres textos antes de enviar.")
+# --- Mensaje final si ya respondió ---
+if st.session_state.submitted:
+    st.markdown("---")
+    st.success("🎉 Has completado la encuesta. Gracias por tu participación.")
