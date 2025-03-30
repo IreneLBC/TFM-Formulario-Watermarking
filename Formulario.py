@@ -81,7 +81,11 @@ if not st.session_state.submitted:
 
     for idx, row in st.session_state.muestra.iterrows():
         st.markdown(f"### Texto {idx + 1}")
-        st.text_area("Contenido:", value=row["text"], height=200, key=f"texto_{idx}", disabled=True)
+        st.markdown(f"""
+        <div style='padding: 1em; background-color: #1e1e1e; color: white; border-radius: 5px; border: 1px solid #444; font-size: 16px;'>
+        {row["text"]}
+        </div>
+        """, unsafe_allow_html=True)
 
         respuesta = st.radio(
             "¿Quién crees que ha escrito este texto?",
