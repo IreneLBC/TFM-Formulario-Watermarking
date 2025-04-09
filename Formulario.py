@@ -12,17 +12,17 @@ st.title("📝 Clasifica los textos: ¿Humano o IA con marca de agua?")
 
 st.markdown("""
 Este formulario forma parte de un experimento académico sobre la detección de textos generados por inteligencia artificial (IA).  
-A continuación, se te presentarán **dos textos** y tu tarea será clasificarlos mediante **dos encuestas** consecutivas:
+A continuación, se te presentarán **dos textos** y tu tarea será clasificarlos.
 
-1. **Encuesta 1:**  
-   ¿Quién crees que ha escrito este texto?  
-   - Escrito por humano  
-   - Escrito por IA  
+**Paso 1:** Indica quién crees que ha escrito el texto:
+- **Escrito por humano**
+- **Escrito por IA**
 
-2. **Encuesta 2:**  
-   Clasificación de la marca de agua:  
-   - Escrito por IA con marca de agua  
-   - Escrito por IA sin marca de agua  
+**Paso 2:** Si seleccionas **Escrito por IA**, se desplegará una segunda pregunta para especificar:
+- **Escrito por IA con marca de agua**
+- **Escrito por IA sin marca de agua**
+
+Una **marca de agua** en este contexto es una modificación sutil introducida en los textos generados por modelos de lenguaje. Esta modificación permite identificar posteriormente si un texto fue producido por una IA y, en ese caso, si posee dicha marca. Los cambios pueden manifestarse en la elección de palabras, la estructura o la puntuación, sin alterar significativamente el contenido original.
 
 ⚠️ Solo puedes enviar una respuesta por sesión. ¡Gracias por participar!
 """)
@@ -39,19 +39,16 @@ def conectar_google_sheets():
 
 def guardar_respuesta_en_sheets(respuestas):
     sheet = conectar_google_sheets()
-    # Cada fila contiene: session_id, timestamp, texto_id, texto,
-    # clasificacion_usuario_ia, clasificacion_real_ia,
-    # clasificacion_usuario_watermark, clasificacion_real_watermark
+    # Se guarda: session_id, timestamp, texto_id, texto, respuesta del usuario y la clasificación real
     for r in respuestas:
         fila = [
             r["session_id"],
             r["timestamp"],
             r["texto_id"],
             r["texto"],
-            r["clasificacion_usuario_ia"],
-            r["clasificacion_real_ia"],
-            r["clasificacion_usuario_watermark"],
-            r["clasificacion_real_watermark"]
+            r["clasificacion_usuario"],
+            r["clasificacion_real"],
+            ""
         ]
         sheet.append_row(fila)
 
@@ -63,38 +60,32 @@ def load_texts():
     df = df[df["text"].str.strip().str.len() > 0]
     return df
 
+def obtener_clasificacion_real(label):
+    # Se asume que en el data set el label "Humanos" indica un texto escrito por humano.
+    # Para los textos generados por IA, si en el label aparece la palabra "Boost" se entiende que tienen marca de agua.
+    if label.strip().lower() == "humanos":
+        return "Escrito por humano"
+    else:
+        if "Boost" in label:
+            return "Escrito por IA con marca de agua"
+        else:
+            return "Escrito por IA sin marca de agua"
+
 textos_df = load_texts()
 
-# Verificación de que haya suficientes textos válidos
 if len(textos_df) < 3:
     st.error("No hay suficientes textos válidos para mostrar. Revisa el archivo.")
     st.stop()
-
-# --- Función para obtener la clasificación real a partir del label ---
-def obtener_clasificacion_real(label):
-    # Se asume que el label "Humanos" indica un texto escrito por humano.
-    # Para los textos generados por IA, se diferencia según si su label contiene la palabra "Boost".
-    if label.strip().lower() == "humanos":
-        ia = "Escrito por humano"
-        watermark = ""
-    else:
-        ia = "Escrito por IA"
-        if "Boost" in label:
-            watermark = "Escrito por IA con marca de agua"
-        else:
-            watermark = "Escrito por IA sin marca de agua"
-    return ia, watermark
 
 # --- Inicializar estado de sesión ---
 if "muestra" not in st.session_state:
     st.session_state.muestra = textos_df.sample(n=2, random_state=random.randint(0, 10000)).reset_index(drop=True)
     st.session_state.session_id = str(uuid.uuid4())
     st.session_state.submitted = False
-    st.session_state.respuestas = [None] * len(st.session_state.muestra)
+    st.session_state.respuestas = [None, None]
 
-# --- Mostrar formulario mientras no se haya enviado ---
 if not st.session_state.submitted:
-    st.write("Lee los siguientes textos y responde las dos encuestas por cada uno:")
+    st.write("Lee los siguientes textos y responde las preguntas:")
 
     for idx, row in st.session_state.muestra.iterrows():
         st.markdown(f"### Texto {idx + 1}")
@@ -104,48 +95,47 @@ if not st.session_state.submitted:
         </div>
         """, unsafe_allow_html=True)
 
-        # Encuesta 1: IA vs Humano
-        respuesta_ia = st.radio(
+        # Primer pregunta: IA vs Humano
+        resp1 = st.radio(
             "¿Quién crees que ha escrito este texto?",
             options=["Escrito por humano", "Escrito por IA"],
-            key=f"respuesta_ia_{idx}"
+            key=f"resp1_{idx}"
         )
-
-        # Encuesta 2: Clasificación de marca de agua
-        respuesta_watermark = st.radio(
-            "Clasificación de la marca de agua:",
-            options=["Escrito por IA con marca de agua", "Escrito por IA sin marca de agua"],
-            key=f"respuesta_watermark_{idx}"
-        )
-
-        # Obtención de las clasificaciones reales a partir del label
-        ia_real, watermark_real = obtener_clasificacion_real(row["label"])
+        
+        # Si el usuario vota "Escrito por IA", mostrar la segunda pregunta para especificar la marca de agua.
+        if resp1 == "Escrito por IA":
+            resp2 = st.radio(
+                "Has seleccionado 'Escrito por IA'. Por favor, especifica:",
+                options=["Escrito por IA con marca de agua", "Escrito por IA sin marca de agua"],
+                key=f"resp2_{idx}"
+            )
+            final_resp = resp2
+        else:
+            final_resp = resp1
 
         st.session_state.respuestas[idx] = {
             "session_id": st.session_state.session_id,
             "timestamp": datetime.now().isoformat(),
             "texto_id": row["id"],
             "texto": row["text"],
-            "clasificacion_usuario_ia": respuesta_ia,
-            "clasificacion_real_ia": ia_real,
-            "clasificacion_usuario_watermark": respuesta_watermark,
-            "clasificacion_real_watermark": watermark_real
+            "clasificacion_usuario": final_resp,
+            "clasificacion_real": obtener_clasificacion_real(row["label"])
         }
 
-    # Botón para enviar respuestas
     if st.button("Enviar respuestas"):
-        all_answered = all(
-            r is not None and r["clasificacion_usuario_ia"] and r["clasificacion_usuario_watermark"]
-            for r in st.session_state.respuestas
-        )
+        # Verificar que se haya respondido la primera pregunta y, en caso de seleccionar IA, que se haya respondido la segunda
+        all_answered = True
+        for r in st.session_state.respuestas:
+            if r["clasificacion_usuario"] is None:
+                all_answered = False
+                break
         if all_answered:
             guardar_respuesta_en_sheets(st.session_state.respuestas)
             st.session_state.submitted = True
             st.success("✅ ¡Gracias! Tus respuestas han sido registradas.")
         else:
-            st.warning("❗Por favor, responde a todas las preguntas de cada texto antes de enviar.")
+            st.warning("❗Por favor, responde a todas las preguntas antes de enviar.")
 
-# --- Mensaje final tras envío ---
 if st.session_state.submitted:
     st.markdown("---")
     st.success("🎉 Has completado la encuesta. Gracias por tu participación.")
